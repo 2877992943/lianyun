@@ -1,0 +1,587 @@
+#! -*- coding:utf-8 -*-
+
+import MySQLdb
+import random,cPickle
+import csv
+import pandas as pd
+
+from MySQLdb import cursors
+import numpy as np
+
+from menu_to_companyName_product_list import strip_word,is_chinese,is_chinese_1,remove_digit_english_punct,extract_tag,wordParsing_all,calculate_text,wordParsing,strQ2B
+
+
+import sys,time,os
+
+from elasticsearch import Elasticsearch
+es = Elasticsearch("123.57.62.29",timeout=100)
+import elasticsearch
+from gensim import corpora
+import gensim
+
+reload(sys)
+sys.setdefaultencoding('utf8')
+
+# product sql for parse
+read_host='rr-2zeg40364h2thw9m6o.mysql.rds.aliyuncs.com'
+write_host='rds5943721vp4so4j16ro.mysql.rds.aliyuncs.com'
+
+db = MySQLdb.connect(host=read_host,
+                     user='yunker',
+                     passwd="yunker2016EP",
+                     db="xddb",
+                     use_unicode=True,
+                     charset='utf8',
+                     cursorclass=cursors.DictCursor)
+
+
+# Test MySQLdb for insert parse
+db_test = MySQLdb.connect(host='rds0710650me01y6d3ogo.mysql.rds.aliyuncs.com',
+                     user='yunker',
+                     passwd="yunke2016",
+                     db="yunketest",
+                     use_unicode=True,
+                     charset='utf8',
+                     cursorclass=cursors.DictCursor)
+
+
+def insert_into_companyParse(cid,rowdict):
+    sql="insert into company_parse values(%s,%s,%s,%s,%s)" #cid comname cominfo produce vector
+    cur=db_test.cursor()
+    #print len(rowdict['Clue_Entry_Com_Name']),len(rowdict['com_info']),len(rowdict['main_produce'])
+    cur.execute(sql,(cid,rowdict['company_name'],rowdict['com_info'],rowdict['main_produce'],rowdict['vector']))
+    cur.close()
+    # db.commit()
+    # db.close()
+
+def update_sql_cominfo(cid,rowdict):
+
+    cur = db_test.cursor()
+
+
+    # cur.execute( """update company_parse set Clue_Entry_Com_Name = %s where CLue_Id =%s """,[rowdict['Clue_Entry_Com_Name'],cid])
+    # cur.execute( """update company_parse set main_produce = %s where CLue_Id =%s """,[rowdict['main_produce'],cid])
+    cur.execute( """update company_parse set main_produce = %s where CLue_Id =%s """,[rowdict['main_produce'],cid])
+    ####
+    db_test.commit()
+    cur.close()
+    #db.close()
+
+
+def get_cominfo(clueIds): #list
+    sql ="""
+    #SELECT CLue_Id,com_info,main_produce,Clue_Entry_Com_Name
+    SELECT CLue_Id,com_info
+    from crm_t_clue
+    where CLue_Id in ('%s')
+    """
+    #limit %s,%s
+    #where CLue_Id  IN ('%s')
+    #and main_produce is not null
+    #start=str(start)
+    #size=str(size)
+    cur = db.cursor()
+    #print sql%(start,size)
+    cur.execute(sql % "','".join(clueIds))
+
+    ret = {}
+    for r in cur.fetchall():
+        ret[r['CLue_Id']] = r #{id:{record},...}
+    #df=pd.read_sql(sql % "','".join(clueIds),db);#print sql % "','".join(clueIds)
+    return ret
+
+def get_clueId(flag): #list
+
+    sql ="""
+    SELECT CLue_Id
+    from crm_t_clue
+    where param2=1
+
+    """ if flag=='clean' else """
+    SELECT CLue_Id
+    from crm_t_clue
+    where param2!=1
+
+    """
+
+    # cur = db.cursor()
+    # #print sql%(start,size)
+    # #cur.execute(sql % "','".join(clueIds))
+    # cur.execute(sql)
+    # ret = []
+    # for r in cur.fetchall():
+    #     ret.append(r['CLue_Id']) #
+    #df=pd.read_sql(sql % "','".join(clueIds),db);#print sql % "','".join(clueIds)
+    df= pd.read_sql(sql,db)
+    return df
+
+def get_clue_all(start,batch_size,attList): 
+    sql ="""
+    SELECT %s
+    from crm_t_clue
+    limit %s,%s
+
+    """
+
+    cur = db.cursor()
+    #print sql%(start,size)
+    #cur.execute(sql % "','".join(clueIds))
+    cur.execute(sql%(','.join(attList),str(start),str(batch_size)))
+    #cur.execute(sql)
+    ret = {}
+    for r in cur.fetchall():
+        ret[r['CLue_Id']]=r
+    #df=pd.read_sql(sql % "','".join(clueIds),db);#print sql % "','".join(clueIds)
+
+    return ret
+
+
+
+def get_clue_byatt(attList,clueIds):
+    sql ="""
+    SELECT %s
+    from crm_t_clue
+    where CLue_Id in ('%s')
+    """
+    cur = db.cursor()
+    #print sql%(start,size)
+    cur.execute(sql % (','.join(attList),"','".join(clueIds)))
+    #cur.execute(sql%(','.join(attList),str(start),str(batch_size)))
+    #cur.execute(sql)
+    ret = {}
+    for r in cur.fetchall():
+        ret[r['CLue_Id']]=r
+    #df=pd.read_sql(sql % "','".join(clueIds),db);#print sql % "','".join(clueIds)
+    return ret
+
+def get_clueId_companyParse(): #list
+    sql ="""
+    SELECT CLue_Id
+    from company_parse
+    """
+
+    cur = db.cursor()
+    #print sql%(start,size)
+    #cur.execute(sql % "','".join(clueIds))
+    cur.execute(sql)
+    ret = []
+    for r in cur.fetchall():
+        ret.append(r['CLue_Id']) #
+    #df=pd.read_sql(sql % "','".join(clueIds),db);#print sql % "','".join(clueIds)
+    return ret
+
+
+
+
+def tfidf_vwformat(cid_name_dic,filename):#{cid:nameStr..}
+    corpus=cid_name_dic.values();print len(corpus),corpus[0] #{cid:nameStr...}
+
+
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    vectorizer = TfidfVectorizer(min_df=1)
+    x=vectorizer.fit_transform(corpus);print type(x),x.shape#,x[0,:]
+    # stopwords=vectorizer.stop_words_();
+    # for w in stopwords:
+    #     print w
+    fealist=vectorizer.get_feature_names();print 'fea',len(fealist)
+    pd.to_pickle(fealist,'../feaNameList')
+
+
+
+
+    ### prepare for doc by doc
+    word_weight_dict={}
+    num=x.shape[0] #[n,d]
+    with open(filename, 'w') as f:
+        for i in range(num)[:]:#each obs
+            obs=corpus[i].split(' ')
+            # for w in obs:
+            #     wid=vectorizer.vocabulary_.get(w);
+            #     if x[i,wid]<=0.1:continue
+            #     print '|' ,w,x[0,wid]#word string,weight
+            f.write('|'+' ')#f.write('0 ')
+            for w in obs[:]:
+                wid=vectorizer.vocabulary_.get(w);#print wid
+                #print type(wid)=='numpy.int64'
+                if wid!=None:
+                    if x[i,wid]<=0.1:
+                        #print w
+                        continue
+
+                    f.write('%s:%f ' % (w, x[i,wid]))## write into  "modeling.svm"
+                    word_weight_dict[w]=x[i,wid]
+            f.write('\n')
+
+    #####
+    pd.DataFrame({'cid':word_weight_dict.keys(),'wei':word_weight_dict.values()}).\
+        to_csv('../word_weight_dict.csv',index=False,encoding='utf-8')
+
+def get_key_word(x_vector,fealist):###??????
+    #print 'xvect',x_vector.shape,type(x_vector) #[1,n]
+    #x_vector=np.squeeze(x_vector)#[1,n]->()
+    x_vector=np.squeeze(x_vector.toarray())#[1,n]->[n,]
+    #print x_vector.shape
+    max_ind=np.argsort(x_vector)[::-1];#print 'max id',max_ind.shape
+    max_ind=max_ind[:20]
+    wordList=[]
+    for ind in max_ind:
+        #print 'ind',ind
+        word=fealist[ind];#print word,x_vector[ind]#wid->word
+        wordList.append(word)
+    return wordList
+
+
+def tfidf_calculate(corpus,filename):# [str_parse,...] -> {word:idf...}
+
+    print 'corpus',len(corpus),corpus[0]
+
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    vectorizer = TfidfVectorizer(min_df=5)
+    x=vectorizer.fit_transform(corpus);print type(x),x.shape#,x[0,:]
+
+    # stopwords=vectorizer.stop_words_();
+    # for w in stopwords:
+    #     print w
+
+
+    # get overall idf
+    fealist=vectorizer.get_feature_names();print 'fea str',len(fealist)
+    idf_array=vectorizer.idf_;print 'idf_array',idf_array.shape
+    word_idf_dict={}
+    for i in range(fealist.__len__()):
+        word_idf_dict[fealist[i]]=idf_array[i]
+
+    return word_idf_dict
+
+
+def clean_str(str):
+
+    str=remove_digit_english_punct(str)
+    strList=str.split(' ');#print strList
+    strList=[w.strip(' ') for w in strList if len(w.strip(' '))>1];#print strList
+
+    return ' '.join(strList)
+
+def insert_into_synonym(word,synonym):
+    sql="insert into synonym_cominfo values(%s,%s)" # id word synonym
+    cur=db.cursor()
+
+    cur.execute(sql,(word,synonym))
+    cur.close()
+    db.commit()
+    # db.close()
+
+def all_chinese(stri):
+    stri=strQ2B(stri.decode('utf-8'))
+    flag=True
+    for ch in stri:
+        if is_chinese(ch)!=True and is_chinese_1(ch)!=True:
+            #print 'single charactor not chinese',ch,[ch]
+            flag=False
+            break
+    return flag
+
+
+
+
+class generateStr_businessScope_mainProduce_cominfo(object):
+    def __init__(self,fpath):
+        self.fpath=fpath
+
+    def __iter__(self):
+        for fname in os.listdir(self.fpath)[:1]:
+            cid_r=pd.read_pickle(self.fpath+fname)
+            for cid,r in cid_r.items()[:]:
+                allField_str=''
+                for field in sql_att_list[1:]:
+                    if field not in r or r[field] in ['null','NULL','',None]:continue
+                    allField_str+=' '+r[field]
+                ## all field
+                yield allField_str
+
+
+
+def function(co_occurance,docFreqA,docFreqB):
+    return float(co_occurance)/float(docFreqA)
+
+
+if __name__=='__main__':
+    #####################
+    #  prepare parse data
+
+
+
+
+
+    sql_att_list=['CLue_Id','param8','main_produce','com_info']
+
+
+
+    """
+    ### get clueid -> attribute
+    # df=get_clueId('clean')
+    # df.to_csv('../data/cid.csv',index=False,encoding='utf-8')
+    #df=pd.read_csv('../data/cid.csv',encoding='utf-8');print df.shape
+
+
+    cidlist=df['CLue_Id'].values.tolist()
+
+    num=len(cidlist)
+    batch_size=100000
+    for i in range(int(num/batch_size)+1):
+        cidlist_batch=cidlist[i*batch_size:i*batch_size+batch_size]
+        ret=get_clue_byatt(sql_att_list,cidlist_batch)#{cid:r
+        print ret.__len__()
+        pd.to_pickle(ret,'../businessScope/%s'%cidlist_batch[0])
+    """
+
+    """
+    #####
+    df=get_clueId('unclean')
+    df.to_csv('../data/cid.csv',index=False,encoding='utf-8')
+    df=pd.read_csv('../data/cid.csv',encoding='utf-8');print df.shape
+
+    cidlist=df['CLue_Id'].values.tolist()
+
+    num=len(cidlist)
+    batch_size=100000
+    for i in range(int(num/batch_size)+1):
+        cidlist_batch=cidlist[i*batch_size:i*batch_size+batch_size]
+        ret=get_clue_byatt(sql_att_list,cidlist_batch)#{cid:r
+        print ret.__len__()
+        pd.to_pickle(ret,'../businessScope/%s'%cidlist_batch[0])
+    """
+
+
+
+
+    
+
+
+
+
+
+    """
+    #### clean parse
+    fpath='../businessScope/'
+
+    for name in os.listdir(fpath)[:1]:
+        cid_content=pd.read_pickle(fpath+name)
+
+        cid_content_parse={}
+        for cid,r in cid_content.items():
+            allFields_list=[]
+            for field in sql_att_list[1:-1]:# only main produce businessScope
+                if field not in r or r[field] in ['null','NULL','',None]:continue
+                stri=r[field]
+                stri=remove_digit_english_punct(stri)
+                ll=calculate_text(stri)
+                stri=' '.join(ll)
+                ll=wordParsing(stri)#for search
+                ll=[w.strip(' ') for w in ll if len(w.strip(' ').decode('utf-8'))>1]
+                allFields_list+=ll
+
+            cid_content_parse[cid]=' '.join(list(set(allFields_list)))
+        print len(cid_content_parse)
+
+
+        pd.to_pickle(cid_content_parse,'../parseFile_businessScope/%s'%str(cid_content_parse.keys()[0]))
+
+    """
+
+
+
+
+
+    """
+    ### word docfreq
+    word_df_dict={}
+    fpath='../parseFile_businessScope/'
+    for name in os.listdir(fpath):
+        cid_stri=pd.read_pickle(fpath+name)
+        for cid,stri in cid_stri.items():
+            wordList=stri.split(' ')
+            #### filtered word
+            wordList=[w.strip(' ')for w in wordList if len(w.strip(' '))>1]
+            for word in wordList:
+                if word not in word_df_dict:
+                    word_df_dict[word]=1
+                else:word_df_dict[word]+=1
+    print 'tt word dict',len(word_df_dict)
+    pd.to_pickle(word_df_dict,'../data/word_df_dict_businessScope_mainProduce')
+    """
+
+
+
+
+    ######## calc word
+
+    word_df_dict=pd.read_pickle('../data/word_df_dict_businessScope_mainProduce');print 'dict',len(word_df_dict)
+    fpath='../businessScope/' #{cid:r...}
+    vocabList=word_df_dict.keys()
+    for i in range(len(vocabList))[:1]:
+        wordA=vocabList[i];print wordA
+        docFreqA=word_df_dict[wordA]
+
+        a_bi_dict={}
+        for j in range(len(vocabList))[i+1:]:
+
+            wordB=vocabList[j]
+            docFreqB=word_df_dict[wordB]
+            if docFreqB>=10000:continue
+            #### prob(B|A)
+            gene=generateStr_businessScope_mainProduce_cominfo(fpath)
+            co_occurance=0
+            for stri in gene:
+                if wordA in stri and wordB in stri:co_occurance+=1
+            if co_occurance==0:continue
+            a_bi_dict[wordB]=function(co_occurance,docFreqA,docFreqB)
+        #### sort
+        ss=sorted(a_bi_dict.iteritems(),key=lambda s:s[1],reverse=True)
+        ss=[s[0] for s in ss][:6] if len(ss)>=6 else [s[0] for s in ss]
+        print 'word',wordA,':',' '.join(ss)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+
+	<head>
+		<meta charset="utf-8" />
+		<title></title>
+		<link rel="stylesheet" href="{{ static_url("css/reset.css") }}" />
+		<link rel="stylesheet" href="{{ static_url("css/style.css") }}" />
+	</head>
+
+	<body>
+		<div class="header">
+			<div class="header-con">
+				<a href="index.html" class="logo-f">
+					<span class="logo"></span>
+				</a>
+			</div>
+		</div>
+		<div class="title-box">
+		<form method="post" action="/sendEmail">
+			{% raw xsrf_form_html() %}
+			<p>email address:<br><input type="text" name="email"></p>
+			<p>how many leads do you want:<br><input type="text" name="num_leads"></p>
+
+			<div class="btn-r">
+				<input type="submit" class="sendEmail" value="sendEmail" />
+			</div>
+			<div class="title">
+				{{page_title}}
+			</div>
+			<div class="sub-title">
+				{{header_text}}
+			</div>
+		</div>
+
+		<div class="content company-list">
+
+
+
+			{%for book in books%}
+				{%module Book(book)%}
+			{%end%}
+			
+		</div>
+
+
+
+	</body>
+
+</html>

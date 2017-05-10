@@ -1,0 +1,60 @@
+<div class="company-li">
+	<div class="company-f">
+
+
+		<div class="com-row">
+			<div class="com-t">
+				comname:
+			</div>
+			<div class="com-text">
+				{{ book["comname"]}}
+			</div>
+		</div>
+
+		{% if   book["diqu"] !=''%}
+			<div class="com-row">
+				<div class="com-t">
+					diqu:
+				</div>
+				<div class="com-text">
+					{{ book["diqu"]}}
+				</div>
+			</div>
+		{%end%}
+
+		
+		{%if book["businessScope"]!='' %}					 
+			<div class="com-row">
+				<div class="com-t">
+					businessScope:
+				</div>
+				<div class="com-text">
+					{{ book["businessScope"]}}
+				</div>
+			</div>
+		{%end%}
+
+		{%if   book["product"] !='' %}	
+			<div class="com-row">
+				<div class="com-t">
+					product:
+				</div>
+				<div class="com-text">
+					{{ book["product"]}}
+				</div>
+			</div>
+		{% end%}
+
+		{%if   book["position"] !='' %}	
+			<div class="com-row">
+				<div class="com-t">
+					position:
+				</div>
+				<div class="com-text">
+					{{ book["position"]}}
+				</div>
+			</div>
+		{% end%}
+
+	</div>
+</div>

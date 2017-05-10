@@ -1,0 +1,208 @@
+#! -*- coding:utf-8 -*-
+
+
+"""
+send post request with asy httpclient,only return 10
+program scroll return all you want
+"""
+
+import os.path
+
+import tornado.httpserver
+import tornado.ioloop
+import tornado.options
+import tornado.web
+from es_search_clue import output_csv,generate_query_body,parse,write_local_csv
+from send_email_withAttachment import send_with_attachment
+import time
+import numpy
+
+
+import tornado.httpclient
+
+import json
+import datetime
+
+from keyword_ext import query_synonym
+
+
+from tornado.options import define, options
+
+define("port", default=8700, help="run on the given port", type=int)
+
+global csvName;
+csvName=''
+
+class BaseHandler(tornado.web.RequestHandler):
+    def get_current_user(self):
+        #self.clear_all_cookies()
+        print 'current user',self.get_secure_cookie("username")
+        #return self.get_secure_cookie("username")
+        t=time.ctime().split(' ')#'Wed Dec 14 10:16:15 2016'
+        t=[part.strip(' ') for part in t if part.find(':')!=-1][0]
+        t=t.split(':')[0]
+        psw='yunke'+t;#print psw
+
+        if self.get_secure_cookie("username")!=psw:
+            #self.clear_all_cookies()
+            return '' #['' none false]
+        else:
+            #self.clear_all_cookies()
+            return psw
+
+
+class LoginHandler(BaseHandler):
+    def get(self):
+        self.render('login.html')
+
+    def post(self):
+        self.set_secure_cookie("username", self.get_argument("username"))
+        #print 'cook',self.get_secure_cookie("username")
+        self.redirect("/field")
+
+class IndexHandler(BaseHandler): #fill keywords
+    @tornado.web.authenticated #depend on currentuser,loginUrl
+    def get(self):
+        self.render('index.html',user=self.current_user)
+
+
+
+
+
+class RecommendedHandler(BaseHandler): #exhibit all result
+    @tornado.web.asynchronous#
+    @tornado.web.authenticated
+    def post(self):
+        global csvName
+        diqu_district = self.get_argument('diqu_district')
+        diqu_city = self.get_argument('diqu_city')
+        comname = self.get_argument('comname')
+        product = self.get_argument('product')
+        main_industry = self.get_argument('main_industry')
+        position = self.get_argument('position')
+        registrationYear=self.get_argument('year_of_registration')
+        business = self.get_argument('business')
+        com_info = self.get_argument('com_info')
+        registed_capital_num = self.get_argument('registed_capital_num')
+
+        diqu=[diqu_district,diqu_city]
+
+        ### generate csvname
+        valueList=[diqu_district,diqu_city,comname,product,main_industry,position,registrationYear,business,com_info,registed_capital_num]
+        valueList=[v for v in valueList if v not in ['',None,numpy.nan]]
+        csvName='_'.join(valueList);print csvName
+
+        ##generate query dict
+        body=generate_query_body(comname,diqu,product,position,registrationYear,business,com_info,main_industry,registed_capital_num);print 'body 1',body
+
+        client = tornado.httpclient.AsyncHTTPClient()
+        url="http://123.57.62.29:9200/clue_*filtered/clue/_search?scroll=1m"
+        #body=json.dumps(body);print ' body 2',body   ## json : turn dict list -> string
+        client.fetch(url,method='POST',callback=self.on_response,body=body)
+
+
+        #self.finish()#
+	#self.redirect("/field")
+    def on_response(self, response):
+        print 'response'
+        #print response.body
+        body = json.loads(response.body)
+        total=body['hits']['total'];print 'total',total,type(total)
+        hitsList=body['hits']['hits']
+        ### limit 300
+        n=200 if len(hitsList)>=200 else len(hitsList)
+        hitsList=hitsList[:n]
+
+        dictList=parse(hitsList)
+        write_local_csv(hitsList)
+        if total<1:
+            self.render(
+                "recommended.html",
+                page_title="search leads | for internal use only ",
+                header_text="searched leads total %d"%total,
+                books=[],
+                user=self.current_user
+            )
+            #self.write('nothing found')
+        else:
+
+            self.render(
+                "recommended.html",
+                page_title="search leads | for internal use only ",
+                header_text="searched leads total %d"%total,
+                books=dictList,
+                user=self.current_user
+            )
+        self.clear_all_cookies()
+        ## since it keep it opening
+        # if self.render() or self.write(), no need to self.finish(),otherwise runtime error finish called twice
+        #self.finish()
+
+class BookModule(tornado.web.UIModule):
+    def render(self, book):
+        return self.render_string('modules/book.html', book=book)
+
+class SendEmailHandler(BaseHandler):
+    def post(self):
+        global csvName
+        email = self.get_argument('email')
+        num_leads = self.get_argument('num_leads')
+        try:
+            print '0',csvName
+            send_with_attachment('yangrui@yunkecn.com',email,'tmp.csv',int(num_leads),csvName)
+            self.write('done')
+        except Exception,e:
+            self.write(Exception)
+
+########## ajax synonym extention
+class Ajax_mainHandler(BaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        self.render("ajax.html",user=self.current_user)
+class Ajax_synonym_Handler(BaseHandler):
+    # @tornado.web.authenticated
+    def post(self):
+
+        word_tobe_ext=self.get_argument("message").decode('utf-8')
+        word_tobe_ext=word_tobe_ext.split(' ')
+        ll=[i.strip(' ') for i in word_tobe_ext if len(i.strip(' '))>=2]
+        ret_ll=[]
+        for word in ll:
+            ret=query_synonym(word,True)
+            #print ret  #{word:{synonym:xxxxx,vector:...}
+            if len(ret)==0:ret_ll.append(word)
+            else:
+                ret_msg=ret.keys()[0]+' '+ret.values()[0]['synonym']
+                ret_ll.append(ret_msg)
+
+        self.write('<br>'.join(ret_ll))
+            
+        
+
+settings = {
+        "template_path": os.path.join(os.path.dirname(__file__), "templates"),
+        "static_path":os.path.join(os.path.dirname(__file__), 'static'),
+        "ui_modules":{'Book': BookModule},
+        "cookie_secret": "bZJc2sWbQLKos6GkHn/VB9oXwQt8S0R0kRvJ5/xJ89E=",
+        "xsrf_cookies": True,
+        "login_url": "/index"
+    }
+
+if __name__ == '__main__':
+    tornado.options.parse_command_line()
+    app = tornado.web.Application(
+        [(r'/index',LoginHandler),
+         (r'/field', IndexHandler),
+         (r'/recom', RecommendedHandler),
+         (r'/sendEmail', SendEmailHandler),
+         (r"/synonym_main", Ajax_mainHandler),
+         (r"/synonym", Ajax_synonym_Handler)],
+        **settings
+    )
+    http_server = tornado.httpserver.HTTPServer(app)
+    http_server.listen(options.port)
+    tornado.ioloop.IOLoop.instance().start()
+
+
+
+""" nohup python main_v3.py --port=8700 >>log.log 2>&1"""

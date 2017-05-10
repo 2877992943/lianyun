@@ -1,0 +1,121 @@
+#! -*- coding:utf-8 -*-
+
+
+import os.path
+
+import tornado.httpserver
+import tornado.ioloop
+import tornado.options
+import tornado.web
+from es_search_clue import output_csv
+from send_email_withAttachment import send_with_attachment
+import time
+
+from tornado.options import define, options
+
+define("port", default=8700, help="run on the given port", type=int)
+
+
+class BaseHandler(tornado.web.RequestHandler):
+    def get_current_user(self):
+        #self.clear_all_cookies()
+        print 'current user',self.get_secure_cookie("username")
+        #return self.get_secure_cookie("username")
+        t=time.ctime().split(' ')[4].split(':')[0] #hour
+        psw='yunke'+t
+
+        if self.get_secure_cookie("username")!=psw:
+            #self.clear_all_cookies()
+            return '' #['' none false]
+        else:
+            #self.clear_all_cookies()
+            return psw
+
+
+class LoginHandler(BaseHandler):
+    def get(self):
+        self.render('login.html')
+
+    def post(self):
+        self.set_secure_cookie("username", self.get_argument("username"))
+        #print 'cook',self.get_secure_cookie("username")
+        self.redirect("/field")
+
+class IndexHandler(BaseHandler): #fill keywords
+    @tornado.web.authenticated #depend on currentuser,loginUrl
+    def get(self):
+        self.render('index.html',user=self.current_user)
+
+
+
+
+
+class RecommendedHandler(BaseHandler): #exhibit all result
+    @tornado.web.asynchronous#
+    @tornado.web.authenticated
+    def post(self):
+        diqu = self.get_argument('diqu')
+        comname = self.get_argument('comname')
+        product = self.get_argument('product')
+        position = self.get_argument('position')
+        registrationYear=self.get_argument('year_of_registration')
+	business = self.get_argument('business')
+        com_info = self.get_argument('com_info')
+        registed_capital_num = self.get_argument('registed_capital_num')
+
+        uplimitNum=100
+        _,dictList,totalFoundNoRepeat,ttfd=output_csv(comname,diqu,product,position,registrationYear,business,com_info,registed_capital_num,uplimitNum)
+
+        if len(dictList)<1:
+            self.write('nothing found')
+        else:
+
+            self.render(
+                "recommended.html",
+                page_title="search leads | for internal use only ",
+                header_text="searched leads total %d"%ttfd,
+                books=dictList,
+                user=self.current_user
+            )
+        self.clear_all_cookies()
+        #self.finish()#
+	#self.redirect("/field")
+
+class BookModule(tornado.web.UIModule):
+    def render(self, book):
+        return self.render_string('modules/book.html', book=book)
+
+class SendEmailHandler(BaseHandler):
+    def post(self):
+        email = self.get_argument('email')
+        num_leads = self.get_argument('num_leads')
+        try:
+            send_with_attachment('yangrui@yunkecn.com',email,'tmp.csv',int(num_leads))
+            self.write('done')
+        except Exception,e:
+            self.write(Exception)
+            
+        
+
+settings = {
+        "template_path": os.path.join(os.path.dirname(__file__), "templates"),
+        "static_path":os.path.join(os.path.dirname(__file__), 'static'),
+        "ui_modules":{'Book': BookModule},
+        "cookie_secret": "bZJc2sWbQLKos6GkHn/VB9oXwQt8S0R0kRvJ5/xJ89E=",
+        "xsrf_cookies": True,
+        "login_url": "/index"
+    }
+
+if __name__ == '__main__':
+    tornado.options.parse_command_line()
+    app = tornado.web.Application(
+        [(r'/index',LoginHandler),(r'/field', IndexHandler), (r'/recom', RecommendedHandler),(r'/sendEmail', SendEmailHandler)],
+        **settings
+    )
+    http_server = tornado.httpserver.HTTPServer(app)
+    http_server.listen(options.port)
+    tornado.ioloop.IOLoop.instance().start()
+
+
+
+""" nohup python main_v3.py --port=8700 >>log.log 2>&1"""

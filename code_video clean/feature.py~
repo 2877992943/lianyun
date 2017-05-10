@@ -1,0 +1,142 @@
+#! -*- coding:utf-8 -*-
+
+
+
+'''http://python.jobbole.com/81186/'''
+
+
+import subprocess
+import wave
+import struct
+import numpy as np
+import csv
+import sys,os
+import scipy
+import pandas as pd
+
+import pylab as pl
+
+def moments(x):
+    mean = x.mean()
+    std = x.var()**0.5
+    skewness = ((x - mean)**3).mean() / std**3
+    kurtosis = ((x - mean)**4).mean() / std**4
+    return [mean, std, skewness, kurtosis]
+ 
+def fftfeatures(wavdata):
+    f = numpy.fft.fft(wavdata)
+    f = f[2:(f.size / 2 + 1)]
+    f = abs(f)
+    total_power = f.sum()
+    f = numpy.array_split(f, 10)
+    return [e.sum() / total_power for e in f]
+ 
+def features(x):
+    x = numpy.array(x)
+    f = []
+ 
+    xs = x
+    diff = xs[1:] - xs[:-1]
+    f.extend(moments(xs))
+    f.extend(moments(diff))
+ 
+    xs = x.reshape(-1, 10).mean(1)
+    diff = xs[1:] - xs[:-1]
+    f.extend(moments(xs))
+    f.extend(moments(diff))
+ 
+    xs = x.reshape(-1, 100).mean(1)
+    diff = xs[1:] - xs[:-1]
+    f.extend(moments(xs))
+    f.extend(moments(diff))
+ 
+    xs = x.reshape(-1, 1000).mean(1)
+    diff = xs[1:] - xs[:-1]
+    f.extend(moments(xs))
+    f.extend(moments(diff))
+ 
+    f.extend(fftfeatures(x))
+    return f
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

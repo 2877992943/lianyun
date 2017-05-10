@@ -1,0 +1,59 @@
+<html>
+<head>
+    <title>Ajax</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <script src="http://code.jquery.com/jquery-1.9.1.min.js"></script>  
+
+    
+
+   
+</head>
+<body>
+
+    <input type="text" placeholder="多个词用空格分开" id="word" > <br>
+    <button id="foo">查同义词</button>
+
+    <div id="result">
+
+    </div>
+
+
+<script type="text/javascript">
+
+
+
+    $("#foo").click(function()
+    {
+
+        function getCookie(name) {
+    var c = document.cookie.match("\\b" + name + "=([^;]*)\\b");
+    return c ? c[1] : undefined;
+}
+
+
+
+        var word = $("#word").val(); //获取文本框的输入
+
+        //把word发给后台php程序
+        //返回的数据放在data中，返回状态放在status
+
+        datain={"_xsrf":getCookie("_xsrf"),message:word}
+
+
+        $.post("/synonym", datain, function(data,status){
+            if(status == "success")
+            {
+                $("#result").html(data);
+            }
+            else
+            {
+                alert("Ajax 失败");
+            }
+        });
+    });
+
+
+</script>
+
+</body>
+</html>

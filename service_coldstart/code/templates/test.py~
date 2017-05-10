@@ -1,0 +1,5 @@
+
+
+
+files={'file':open('abc.csv','rb')}
+response=requests.post(url,files=files)

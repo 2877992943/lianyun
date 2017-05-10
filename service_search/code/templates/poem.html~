@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html>
+    <head><title>Poem Maker Pro</title></head>
+    <body>
+        <h1>Your poem</h1>
+        <p>Two {{diqu}} diverged in a {{comname}}, and I—<br>
+I took the one less travelled by,<br>
+And that has {{product}} all the {{position}}.</p>
+    </body>
+</html>
+

@@ -1,0 +1,44 @@
+<meta charset="utf-8" />
+
+<div class="content-t">
+	下载公司名关键词和经营范围关键词挑选后上传，该关键词直接决定候选集合的质量，建议参考销售的意见
+</div>
+
+<form method="post" target="_blank" action="/download_comname">
+	<div class="row">
+		<div class="submit">
+			<input type="submit" value="download company name keyword" />
+		</div>
+	</div>
+</form>
+
+<form method="post" target="_blank" action="/download_business">
+	<div class="row">
+		<div class="submit">
+			<input type="submit" value="download business keyword" />
+		</div>
+	</div>
+</form>
+
+
+<div class="sub-title">
+	{{header_text}}
+</div>
+
+ 
+
+                    <body>
+                      <form action='upload_key' target="_blank" enctype="multipart/form-data" method='post'>
+                        保存公司名关键词key_count_comname.csv:<input type='file' name='file_comname'/><br/>
+			保存经营范围关键词key_count_business.csv:<input type='file' name='file_businessScope'/><br/>
+                        <input type='submit' value='submit'/>
+                      </form>
+                    </body>
+
+		    <body>
+        		<form action="/recom" method="POST">
+	    			推荐条数: <input type="text" placeholder="填写数字" name="num_leads"><br/>
+            			<button type="submit" formmethod="post" formaction="/recom1">推荐模式1(排序使用经营范围评分)</button><br/>
+				<button type="submit" formmethod="post" formaction="/recom2">推荐模式2(排序使用公司简介 经营范围描述能力差时建议使用)</button>
+        		</form>
+    		    </body>

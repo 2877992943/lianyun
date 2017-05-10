@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+
+	<head>
+		<meta charset="utf-8" />
+		<title></title>
+		<link rel="stylesheet" href="css/reset.css" />
+		<link rel="stylesheet" href="css/style.css" />
+	</head>
+
+	<body>
+		<div class="header">
+			<div class="header-con">
+				<a href="index.html" class="logo-f">
+					<span class="logo"></span>
+				</a>
+			</div>
+		</div>
+		<div class="content-f">
+			<div class="content">
+				<form>
+
+					<div class="content-t">
+						Enter terms below
+					</div>
+					<div class="row">
+						<div class="name">
+							diqu
+						</div>
+						<div class="enter">
+							<input type="text" />
+						</div>
+					</div>
+					<div class="row">
+						<div class="name">
+							comname
+						</div>
+						<div class="enter">
+							<input type="text" />
+						</div>
+					</div>
+					<div class="row">
+						<div class="name">
+							product
+						</div>
+						<div class="enter">
+							<input type="text" />
+						</div>
+					</div>
+					<div class="row">
+						<div class="name">
+							position
+						</div>
+						<div class="enter">
+							<input type="text" />
+						</div>
+					</div>
+					<div class="row">
+						<div class="submit">
+							<input type="submit" value="搜索" />
+						</div>
+					</div>
+					<div class="row">
+						<div class="submit">
+							<input type="submit" value="搜索" />
+						</div>
+					</div>
+					<div class="row">
+						<div class="name r-name">
+							上传csv包含comname | businessScope | cominfo字段：
+						</div>
+						<div class="enter">
+							<input name="button" class="btn" type="button" onclick="myfile.click();" value="浏览文档" />
+							<input type="text" class="filetext" id="input1" />
+							<input type="file" id="myfile" onchange="input1.value=this.value" style="display:none" />
+						</div>
+					</div>
+					<div class="row">
+						<div class="submit">
+							<input type="submit" value="搜索" />
+						</div>
+					</div>
+				</form>
+			</div>
+
+		</div>
+	</body>
+
+</html>

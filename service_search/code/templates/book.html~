@@ -1,0 +1,15 @@
+<div class="book">
+    <h4 class="book_title">{{ book["diqu"] }}</h3>
+    {% if book["comname"] != "" %}
+        <h4 class="book_subtitle">{{ book["comname"] }}</h4>
+    {% end %}
+    <h4 class="book_subtitle">{{ book["product"] }}</h4>
+    <div class="book_details">
+        <div class="book_date_released">Released: {{ book["position"]}}</div>
+        <div class="book_date_added">
+            Added: {{ locale.format_date(book["position"], relative=False) }}
+        </div>
+        <h5>Description:</h5>
+        <div class="book_body">{% raw book["position"] %}</div>
+    </div>
+</div>

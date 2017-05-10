@@ -1,0 +1,278 @@
+#! -*- coding:utf-8 -*-
+
+import MySQLdb
+import random,cPickle
+import csv
+import pandas as pd
+
+from MySQLdb import cursors
+import numpy as np
+
+from menu_to_companyName_product_list import valid_date_form
+#from es_update_bulk import generate_actions
+
+from elasticsearch import Elasticsearch,helpers
+ 
+#import pylab as plt
+import sys,time
+reload(sys)
+sys.setdefaultencoding('utf8')
+
+from elasticsearch import Elasticsearch
+es = Elasticsearch("123.57.62.29",time=500)
+
+
+# def get_cid_companyName():
+#
+#     sql = "SELECT clue_id,Clue_Entry_Com_Name from crm_t_clue where param2=1"
+#     df=pd.read_sql(sql,db)
+#     #df.to_csv("../allClueId.csv",index=False,encoding='utf-8')
+#     return df
+#
+# def get_capital_address():
+#     sql = """
+# 	SELECT clue_id, registed_capital,Com_Address,Clue_Entry_Com_Name,com_type,employees_num
+# 	from crm_t_clue
+# 	limit 10000"""
+#     """
+#     cur = db.cursor()
+#     #cur.execute(sql % "','".join(clue_ids))
+#
+#     cur.execute(sql)
+#     ret = {}
+#     for r in cur.fetchall():
+#        ret[r['CLue_Id']] = r['registed_capital'] #{id:{record},...}
+#     """
+#     df=pd.read_sql(sql,db)
+#
+#     return df  #dict {id:{record},..}
+#
+#
+#
+# def get_new_cid():
+#     sql = """
+#         SELECT clue_id
+#         from crm_t_clue
+#         where Create_User_Account='system_20160825' or Create_User_Account='system_20160827' or Create_User_Account='card_20160901'
+#         #limit 1
+#         """
+#     # 24 |25 27 901
+#     df=pd.read_sql(sql,db)
+#
+#     return df
+#
+#
+# def get_negative_idx(clueId): #too slow
+#     print '1', clueId[0],len(clueId)
+#     '''
+#     Get negative   Clue_Id
+#     '''
+#     sql = """SELECT clue_id from crm_t_clue
+#             where clue_id not in ('%s')
+#             limit 10"""
+#
+#     df=pd.read_sql(sql % "','".join(clueId),db)
+#     #df=pd.read_sql(sql,db)
+#     df.to_csv("../negativeClueId.csv",index=False,encoding='utf-8')
+#
+#
+#
+# def get_positive_id():
+#     '''
+#     Get the positive_ids from phone_response_clue.txt ->phone ,id,
+#     '''
+#
+#     positive_responses = set(['QQ', '短信', '注册', '邮箱', '预约' ,'微信'])
+#     with open('../tianxiang/phone_response_clue.txt') as f:
+#         lines = f.read().split('\n')[:-1]
+#     oids = [l.split(',')[2] for l in lines if l.split(',')[1] in positive_responses]#id
+#     teles = [l.split(',')[0] for l in lines if l.split(',')[1] in positive_responses]#tele
+#
+#     pd.DataFrame({'clueId':oids,'teles':teles}).to_csv("../clueId_tele.csv",index=False,encoding='utf-8')
+#     return oids,teles
+#
+#
+#
+# def get_clue_idx(tels):
+#     '''
+#     Get Clue_Ids by Clue_Entry_Cellphone
+#     '''
+#
+#     sql = """
+#         SELECT CLue_Id
+#         FROM crm_t_clue
+#         WHERE Clue_Entry_Cellphone IN
+#               ('%s')
+#
+#     """
+#     df=pd.read_sql(sql % "','".join(tels),db)
+#     df.to_csv("../teleQueryClueId.csv",index=False,encoding='utf-8')
+
+
+def generate_que(att,val):
+    que= {
+            "from" : 0, "size" : 1,  #100 200 500 1000
+            "query" : {
+                    "match_phrase" : { att : val }
+                     },
+           #"fields":['CLue_Id','main_produce']
+         }
+    return que
+ 
+
+def update_item(es_index,k,update_dict):
+    try:
+        es.update(index=es_index,doc_type='clue',id=k,body=update_dict)
+        return 1
+    except:
+        #print 'not found in '+es_index
+        return 0
+
+
+def match_by_comname(name):
+    ret={"registrationdate":'',"commercialDB_id":'',"com_status":'',"legal_person":'',"Com_Address":''}
+
+    res=es.search(index="company_1",doc_type="company",body=generate_que("title",str(name)))
+    hits=res['hits']['hits'];
+    # if not matched
+    if len(hits)<=0:
+        return ret
+    # if matched
+
+
+    for hit in hits[:]:
+        # mutual match
+        name_c=hit['_source']['title']
+        if name!=name_c:continue
+        #####
+        ret["commercialDB_id"]=hit['_id']
+        if 'cstatus' in hit['_source'] and hit['_source']['cstatus']!=None:ret["com_status"]=hit['_source']['cstatus']
+        if 'registrationdate' in hit['_source'] and hit['_source']['registrationdate']!=None:ret['registrationdate']=hit['_source']['registrationdate']
+        if 'fazheng' in hit['_source'] and hit['_source']['fazheng']!=None:ret['registrationdate']=hit['_source']['fazheng']
+        if 'address' in hit['_source'] and hit['_source']['address']!=None:ret['Com_Address']=hit['_source']['address']
+        if 'legalperson' in hit['_source'] and hit['_source']['legalperson']!=None:ret['legal_person']=hit['_source']['legalperson']
+    return ret
+
+
+
+if __name__ == "__main__":
+    # from elasticsearch import Elasticsearch
+    # es = Elasticsearch("123.57.62.29",time=500)
+    #############
+    #  get cid,comName from clue   {cid:comName
+    #df=get_cid_companyName()
+    #df.to_csv('../data_cstatus/cid_comname.csv',index=False,encoding='utf-8')
+
+    # #######
+    # match es_company -> clueId_companynameInClue_companyId_companynameInCommercial_status  |  "Clue_Entry_Com_Name"  |"cstatus"   "title"   "registrationdate"
+    df=pd.read_csv('../data_cstatus/cid_comname.csv');print 'before match',df.shape
+    cid=df['clue_id'].values.tolist()
+    comname=df["Clue_Entry_Com_Name"].values.tolist()
+
+    batch_size=10000
+    num_batch=int(df.shape[0]/batch_size)+1
+    for batch in range(num_batch)[:]:
+        print 'batch',batch
+        start_time=time.time()
+        ###########
+
+        cidList_commercialDB=[]
+        nameList_commercialDB=[]
+        statusList_commercialDB=[]
+        registDate_commercialDB=[]
+
+
+        clueId_rowdict={} #{clueId:{field1:v,field2:v}...}
+        for i in range(len(comname))[batch*batch_size:(batch+1)*batch_size]:
+        #for i in range(len(comname))[:1]:
+
+            clue_id=cid[i];#print clue_id
+            name=comname[i];
+            res=es.search(index="company_1",doc_type="company",body=generate_que("title",str(name)))
+            hits=res['hits']['hits'];
+            # if not matched
+            if len(hits)<=0:
+                continue
+            # if matched
+            matched_id=[]
+            matched_name=[]
+            matched_status=[]
+            matched_registDate=[]
+            clueId_rowdict[clue_id]={"registrationdate":'',"commercialDB_id":'',"com_status":''}
+            for hit in hits[:]:
+                status,registDate='',''
+                cid_c=hit['_id']
+                name_c=hit['_source']['title']
+                if 'cstatus' in hit['_source'] and hit['_source']['cstatus']!=None:status=hit['_source']['cstatus']
+                if 'registrationdate' in hit['_source'] and hit['_source']['registrationdate']!=None:registDate=hit['_source']['registrationdate']
+                matched_id.append(cid_c)
+                matched_name.append(name_c)
+                if status!='' and len(matched_status)==0:
+                    matched_status.append(status)
+                if registDate!='' and len(matched_registDate)==0:
+                    if valid_date_form(registDate):
+                        matched_registDate.append(registDate)
+                #print type(registDate),registDate
+            ## for csv
+            cidList_commercialDB.append(' '.join(matched_id))
+            nameList_commercialDB.append(' '.join(matched_name))
+            statusList_commercialDB.append(' '.join(matched_status))# ' '.join([]) ->''
+            registDate_commercialDB.append(' '.join(matched_registDate))
+            ## for update es
+            clueId_rowdict[clue_id]["registrationdate"]=' '.join(matched_registDate)
+            clueId_rowdict[clue_id]["commercialDB_id"]=' '.join(matched_id)
+            clueId_rowdict[clue_id]["com_status"]=' '.join(matched_status)
+
+        ###
+        #df=pd.DataFrame({'id':cidList_commercialDB,'name':nameList_commercialDB,'status':statusList_commercialDB,'regDate':registDate_commercialDB});print 'after match',df.shape
+        #df.to_csv('../data_cstatus/commercialDB_%s.csv'%str(batch))
+        pd.to_pickle(clueId_rowdict,'../updateFile/%s'%str(batch))
+	print 'it takes how many seconds',str(time.time()-start_time)
+
+
+        # ############
+        # -> update es
+        """
+        cnt_clue01,cnt_clueFiltered,cnt_clueNotFiltered=0,0,0
+        for k,update_dict in clueId_rowdict.items():
+            update_dict={'doc':update_dict};#print update_dict
+            flag_clue01=update_item("clue_01",k,update_dict)
+            flag_clueFiltered=update_item("clue_filtered",k,update_dict)
+            flag_clueNotFiltered=update_item("clue_not_filtered",k,update_dict)
+            cnt_clue01+=flag_clue01
+            cnt_clueFiltered+=flag_clueFiltered
+            cnt_clueNotFiltered+=flag_clueNotFiltered
+        print cnt_clue01,cnt_clueFiltered,cnt_clueNotFiltered
+        print 'it takes how many seconds',str(time.time()-start_time)
+        """
+
+
+
+
+# nohup python match_comName_id_status_registData_visual_batch_nobulk.py >> /root/yangrui/match_es.log 2>&1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

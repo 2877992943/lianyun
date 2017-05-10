@@ -1,0 +1,310 @@
+#! -*- coding:utf-8 -*-
+
+import MySQLdb
+import random,cPickle
+import csv,re,os
+import pandas as pd
+
+from MySQLdb import cursors
+import numpy as np
+from clue import *
+
+from base import CategoricalTextMixIn, ClueFeature, FieldExistsMixIn, ParseNumberMixIn,get_clues
+
+from elasticsearch import Elasticsearch, helpers
+from generate_clue_str import gen_svmlight
+
+es=Elasticsearch(hosts='123.57.62.29',timeout=5000)
+
+#import pylab as plt
+import sys,time
+reload(sys)
+sys.setdefaultencoding('utf8')
+
+db = MySQLdb.connect(host='rds5943721vp4so4j16ro.mysql.rds.aliyuncs.com',
+                     user='yunker',
+                     passwd="yunker2016EP",
+                     db="xddb",
+                     use_unicode=True,
+                     charset='utf8',
+                     cursorclass=cursors.DictCursor)
+
+def get_all_idx():
+    '''
+    Get all the Clue_Id
+    '''
+    sql = "SELECT clue_id from crm_t_clue where param2!=1"
+    df=pd.read_sql(sql,db)
+    #df.to_csv("../allClueId.csv",index=False,encoding='utf-8')
+    return df
+
+def get_new_cid():
+    sql = """
+        SELECT clue_id
+        from crm_t_clue
+        where Create_User_Account='system_20160825' or Create_User_Account='system_20160827' or Create_User_Account='card_20160901'
+        #limit 1
+        """
+    # 24 |25 27 901
+    df=pd.read_sql(sql,db)
+
+    return df
+
+
+def get_negative_idx(clueId): #too slow
+    print '1', clueId[0],len(clueId)
+    '''
+    Get negative   Clue_Id
+    '''
+    sql = """SELECT clue_id from crm_t_clue
+            where clue_id not in ('%s')
+            limit 10"""
+
+    df=pd.read_sql(sql % "','".join(clueId),db)
+    #df=pd.read_sql(sql,db)
+    df.to_csv("../negativeClueId.csv",index=False,encoding='utf-8')
+
+
+
+def get_positive_id():
+    '''
+    Get the positive_ids from phone_response_clue.txt ->phone ,id,
+    '''
+
+    positive_responses = set(['QQ', '短信', '注册', '邮箱', '预约' ,'微信'])
+    with open('../tianxiang/phone_response_clue.txt') as f:
+        lines = f.read().split('\n')[:-1]
+    oids = [l.split(',')[2] for l in lines if l.split(',')[1] in positive_responses]#id
+    teles = [l.split(',')[0] for l in lines if l.split(',')[1] in positive_responses]#tele
+
+    pd.DataFrame({'clueId':oids,'teles':teles}).to_csv("../clueId_tele.csv",index=False,encoding='utf-8')
+    return oids,teles
+
+
+
+def get_clue_idx(tels):
+    '''
+    Get Clue_Ids by Clue_Entry_Cellphone
+    '''
+
+    sql = """
+        SELECT CLue_Id
+        FROM crm_t_clue
+        WHERE Clue_Entry_Cellphone IN
+              ('%s')
+    """
+    df=pd.read_sql(sql % "','".join(tels),db)
+    df.to_csv("../teleQueryClueId.csv",index=False,encoding='utf-8')
+
+
+
+
+def save2pickle(c,name):
+    write_file=open(str(name),'wb')
+    cPickle.dump(c,write_file,-1)#[ (timestamp,[motion,x,y,z]),...]
+    write_file.close()
+
+def load_pickle(path_i):
+    f=open(path_i,'rb')
+    data=cPickle.load(f)#[ [time,[xyz],y] ,[],[]...]
+    f.close()
+    #print data.__len__(),data[0]
+    return data
+
+
+def combine_raw_fid(cid_fid,raw):#dict dict
+    for cid,rowdict in raw.items():
+        if cid in cid_fid:
+            raw[cid]['feature_value']=str(cid_fid[cid])
+    return raw
+
+def transform_lowDim_ind(rowDict_str,lowDimWordDic): #{duty_yuangong:v...} -> { 1:v.... {word:fid
+    rowDic={}
+
+    for f_str,v in rowDict_str.items(): # one clue {strfea:v..}  duty_yuangong
+        if v!=0:
+            #f_str_=f_str.lstrip(cate_p);print f_str,f_str_ # not work
+            #f_str_=strip_name(f_str);#print '?',f_str,f_str_
+            if f_str in lowDimWordDic:
+                fid=lowDimWordDic[f_str]
+                rowDic[fid]=v
+    return rowDic
+
+
+def generate_cid_fid(allclue_feadict,word_lowDim_dict):
+    filtered_clueid_fea={} #{cid:rowdict
+    for cid,feadic in allclue_feadict.items()[:]:
+
+        if len(feadic)!=0:
+            rowDict=feadic;#print 'fdic str', feadic
+            rowDict=transform_lowDim_ind(rowDict,word_lowDim_dict) #{str:v..}->{fid:v...} duty_yuangong not duty_1
+            #print 'rowdict fid',rowDict
+            if len(rowDict)>0:
+                filtered_clueid_fea[cid]=rowDict
+
+            else:filtered_clueid_fea[cid]={}
+            #print filtered_clueid_fea[cid]
+        else:filtered_clueid_fea[cid]={}
+     #print filtered_clueid_fea
+    print len(filtered_clueid_fea)
+    return filtered_clueid_fea
+
+def process_data(raw_fid_dict): #{cid:{rawdict},,,,}
+    raw_fid_dict_ret={}
+    for cid,rawdict in raw_fid_dict.items()[:]:
+        # for each obs
+        ### location
+        latitude = rawdict['Clue_Latitude']
+	longitude = rawdict['Clue_Longitude']
+	if latitude == "" or float(latitude) > 90 or float(latitude) < 0:
+	    latitude = 0.0
+	if longitude == "" or float(longitude) > 180 or float(longitude) < 0:
+            longitude = 0.0
+ 
+	raw_fid_dict[cid]['location'] = str(latitude) + "," + str(longitude)
+        ### 
+        raw_fid_dict[cid]['businessScope']=raw_fid_dict[cid]['param8']
+        ### time
+        for it in ['Create_Time','Edit_Time','weixin_CreateTime','vip_end_date']:
+            raw_fid_dict[cid][it] = time.time()
+        ### str->int
+        raw_fid_dict[cid]['param2'] = -1000 if raw_fid_dict[cid]['param2'] == '' else int(raw_fid_dict[cid]['param2'])
+        raw_fid_dict[cid]['param3'] = -1000 if raw_fid_dict[cid]['param3'] == '' else int(raw_fid_dict[cid]['param3'])
+        ### select field which exist in es
+        raw_fid_dict_ret[cid]={}
+        
+        for att in sql_att_list:
+            att_es=re.sub(r'(_clean)','',att)
+            raw_fid_dict_ret[cid][att_es]=raw_fid_dict[cid][att]
+            #print att_es,raw_fid_dict[cid][att]
+        for att in ['location','businessScope','feature_value']:
+            raw_fid_dict_ret[cid][att]=raw_fid_dict[cid][att]
+            #print att,raw_fid_dict[cid][att]
+            
+    return raw_fid_dict_ret
+        
+        
+
+
+if __name__ == "__main__":
+    time_start=time.time()
+     
+    #### given clueId->{clueid:{feaStr:v,,,,} feastr='cluetable_industry_xxx'
+    #df=get_new_cid();print df.shape
+    #df=get_all_idx();print df.shape
+    #df.to_csv("../data/allClueId_.csv",index=False,encoding='utf-8')
+
+    """
+    # generate low dim fid
+    feaNameList=pd.read_pickle('../backup/feaNameList_nonzero_lr_816')
+    word_lowDim_dict=dict(zip(feaNameList,range(len(feaNameList) ) ) )
+
+    # all cid
+    #df=pd.read_csv("../data/allClueId_.csv",encoding='utf-8')
+    df=pd.read_csv('/root/yangrui/clean_data/data/comname_null.csv',encoding='utf-8')
+    all_clueId=df['CLue_Id'].values.tolist();print 'all clueid',len(all_clueId)
+
+    ########## query calc fea  ->{clueid:{feaStr:feavalue...}   feaStr=duty_yuangong ,not duty_1
+    from base import ClueFeature
+    from clue import *
+    features = ClueFeature.__subclasses__()
+    ## batches
+    numall=len(all_clueId)
+    num_batches=numall/100000+1
+    ###
+     
+    df=pd.read_csv('/root/yangrui/es_tableClue_dataPrepare/backup/t.txt',encoding='utf-8')
+    sql_att=df['sql'].values.tolist()
+    sql_att_list=[s.strip(' ') for s in sql_att]
+
+    """
+
+    """
+    for i in range(num_batches)[:]: # 0 1 2 3
+        print 'batch',i
+        model_clueid=all_clueId[i*100000:(i+1)*100000]
+        ## raw data
+        print 'get raw data and generate strfea...' #clue_profession_yuangong
+        ret=get_clues(model_clueid[:]) # into cache  raw data
+        
+        clueIdDict=gen_svmlight('strDict_clue_'+str(i), features, model_clueid[:],'clue')
+        ## low dim
+        print 'generate low dim fid and combine '
+        cid_fid_dict=generate_cid_fid(clueIdDict,word_lowDim_dict)
+        # combine fid & raw
+        raw_fid_dict=combine_raw_fid(cid_fid_dict,ret)# {cid:{rawdict...}...}
+        # select field |time to timestamp | lagitude longitude ->location |businessScope
+        raw_fid_dict=process_data(raw_fid_dict)
+         
+         
+        #print len(raw_fid_dict),raw_fid_dict.values()[0]
+        pd.to_pickle(raw_fid_dict,'../combined/'+str(i))
+
+
+
+
+
+
+    time_end=time.time()
+    print 'time... %f sec'%(time_end-time_start)
+
+
+    """
+    ##############
+    # insert into es
+    fail=0
+    path='../combined/'
+    for name in os.listdir(path)[:]:
+        fname=path+name
+        raw_dict=pd.read_pickle(fname)
+        for cid,raw in raw_dict.items()[:]:
+            #print cid
+            try:
+                es.index(index="clue_filtered", doc_type="clue", id=cid, body=raw)
+            except:fail+=1
+    print 'fail',fail
+     
+     
+    
+    
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

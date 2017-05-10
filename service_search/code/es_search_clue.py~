@@ -1,0 +1,463 @@
+#! -*- coding:utf-8 -*-
+
+import MySQLdb
+import random,cPickle
+import csv,re,json
+import pandas as pd
+
+from MySQLdb import cursors
+import numpy as np
+
+#from menu_to_companyName_product_list import strip_word
+
+
+#import pylab as plt
+import sys,time,os
+
+from elasticsearch import Elasticsearch
+import elasticsearch
+es = Elasticsearch("123.57.62.29",timeout=200)
+
+reload(sys)
+sys.setdefaultencoding('utf8')
+
+
+"""db = MySQLdb.connect(host='rds5943721vp4so4j16ro.mysql.rds.aliyuncs.com',
+                     user='yunker',
+                     passwd="yunker2016EP",
+                     db="xddb",
+                     use_unicode=True,
+                     charset='utf8',
+                     cursorclass=cursors.DictCursor)"""
+
+
+
+
+
+
+
+
+def query_clueDB(es_index,comname_stri,diqu_stri,product_stri,major_stri,registrationYear,business,com_info,main_industry,registed_capital_num,total_most):
+    global all_cid_source,unique_comname
+
+    diquMust={"match_phrase": {
+						            "param4": {
+						                "query":   diqu_stri.decode('utf-8'),
+						                #"operator":"or"
+
+
+
+						            }
+						        }}
+
+    comnameMust={"match_phrase": {
+						            "Clue_Entry_Com_Name": {
+						                "query":  comname_stri.decode('utf-8'),
+						                #"operator":"or"
+
+
+
+						            }
+						        }}
+
+    productMust={"match_phrase": {
+						            "main_produce": {
+						                "query":  product_stri.decode('utf-8'),
+						                #"operator":"or"
+
+
+
+						            }
+						        }}
+
+    businessScopeMust={"match_phrase": {
+						            "businessScope": {
+						                "query":  business.decode('utf-8'),
+						                #"operator":"or"
+
+
+
+						            }
+						        }}
+    com_infoMust={"match_phrase": {
+						            "com_info": {
+						                "query":  com_info.decode('utf-8'),
+						                #"operator":"or"
+
+
+
+						            }
+						        }}
+    industryMust={"match_phrase": {
+						            "main_industry": {
+						                "query":  main_industry.decode('utf-8'),
+						                #"operator":"or"
+
+
+
+						            }
+						        }}
+
+    majorMust={"match_phrase": {
+						            "Clue_Entry_Major": {
+						                "query":  major_stri.decode('utf-8'),
+						                #"operator":"or"
+
+
+
+						            }
+						        }}
+
+    registrationdateMust={
+                            "range" : {
+                                "registrationdate" : {
+                                    "gte" :str(registrationYear).strip(' ')+"-01-01",
+                                   # "lt" :  "2089-01-01"
+                                }
+                            }
+                        }
+    if registed_capital_num.isdigit()==True:
+        capitalNumMust={
+                            "range" : {
+                                "registed_capital_num" : {
+                                    "gte" :float(registed_capital_num),
+                                   # "lt" :  "2089-01-01"
+                                }
+                            }
+                        }
+        striList=[comname_stri,diqu_stri,product_stri,major_stri,registrationYear,business,com_info,main_industry,registed_capital_num]
+     
+    	grammerList=[comnameMust,diquMust,productMust,majorMust,registrationdateMust,businessScopeMust,com_infoMust,industryMust,capitalNumMust]
+
+
+
+
+
+    
+    striList=[comname_stri,diqu_stri,product_stri,major_stri,registrationYear,business,com_info,main_industry]
+     
+    grammerList=[comnameMust,diquMust,productMust,majorMust,registrationdateMust,businessScopeMust,com_infoMust,industryMust]
+    startStri="""{"query": {"bool":{"""
+    mustSeries=''
+    for i in range(striList.__len__()):
+        if len(striList[i].strip(' '))>=1:
+            #item="\"must\""+":"+str(grammerList[i])+","   # fail to parse
+            item="\"must\""+":"+json.dumps(grammerList[i])+","
+            mustSeries+=item
+
+    spellStri=startStri+mustSeries[:-1]+"}}}"
+    que=re.sub('(\')','\"',spellStri)
+    print que
+
+
+
+#     {
+#     "query": {"bool":{"must":
+# 						        {"match": {
+# 						            "Clue_Entry_Major": {
+# 						                "query":    "人事 行政",
+# 						                "operator":"or"
+#
+#
+#
+# 						            }
+# 						        }},
+#
+# 						"must":
+# 						        {"match": {
+# 						            "Clue_Entry_Com_Name": {
+# 						                "query":    "红酒 科技",
+# 						                "operator":"or"
+#
+#
+#
+# 						            }
+# 						        }}
+#
+#     }
+# }}
+
+
+
+    #print 'query',que
+
+    rs = es.search(index=es_index,doc_type="clue",scroll='80s',search_type='scan',size=500,body=que)
+
+
+
+
+
+    ###### by scroll query
+
+    print 'scroll'
+
+
+
+    scroll_size = rs['hits']['total'];print 'total',scroll_size
+    totalFound=scroll_size
+
+    i=0
+    while (scroll_size > 0):
+
+
+        scroll_id = rs['_scroll_id']
+        rs = es.scroll(scroll_id=scroll_id, scroll='80s')
+        #allPages += rs['hits']['hits']
+        hit_list=rs['hits']['hits'];#print 'hit',len(hit_list)
+        for hit in hit_list[:]:
+            cid=hit['_id'];#print 'cid',cid,hit['_source']
+            comname=hit['_source']['Clue_Entry_Com_Name']
+            ### remove repeat comname
+            if comname in unique_comname:continue
+            unique_comname.append(comname)
+            cellphone=hit['_source']['Clue_Entry_Cellphone']
+            if len(str(cellphone))<11:continue
+            leadsName=hit['_source']['Clue_Entry_Name']
+            if leadsName in ['','--']:continue
+            if cid not in all_cid_source:
+                all_cid_source[cid]=hit['_source']#{field:v}
+
+        scroll_size = len(hit_list)
+        print 'scroll',scroll_size,len(all_cid_source)
+
+        if len(all_cid_source)>=total_most:break
+    return totalFound
+
+
+
+
+
+
+
+
+def select_attribute(cid_source):
+    cid_produce={}
+
+    for cid,source in cid_source.items():
+
+        obs={}
+        for att in attList[:]:
+            if att in hit['_source'] and hit['_source'][att]!=None:
+                obs[att]=hit['_source'][att]
+            else:
+                obs[att]=''
+        cid_produce[cid]=obs
+
+def select_produce(cid_source,attList): #{cid:sourceDict...}
+    cid_produce={}
+
+    for cid,source in cid_source.items()[:]:
+
+        cid_produce[cid]=''
+        for att in attList[:]:
+            if att in source and source[att]!=None:
+
+                cid_produce[cid]=source[att]
+
+
+    return cid_produce
+
+def output_csv(comname_stri,diqu_stri,product_stri,major_stri,registrationYear,business,com_info,main_industry,registed_capital_num,num_total):
+    global all_cid_source,unique_comname
+    all_cid_source={}
+    unique_comname=[]
+
+    #attList_clueDB=['main_produce']
+    #province_list,comName_list,product_list,major_list=[],[],[],[]
+    # comName_list=comname_stri.split(' ')
+    # province_list=diqu_stri.split(' ')
+    # product_list=product_stri.split(' ')
+    # major_list=major_stri.split(' ')
+
+     
+
+
+    ttfd=query_clueDB('clue_filtered',comname_stri,diqu_stri,product_stri,major_stri,registrationYear,business,com_info,main_industry,registed_capital_num,num_total)
+    ttfd1=query_clueDB('clue_not_filtered',comname_stri,diqu_stri,product_stri,major_stri,registrationYear,business,com_info,main_industry,registed_capital_num,num_total)
+    ##### if found 0 pieces
+    # there is difference
+    # between total_found and
+    # total_found_not_remove_repeat
+    ttfd_remove_repeat=len(all_cid_source)
+    if ttfd+ttfd1==0:
+        pd.DataFrame({'empty':[]}).to_csv('tmp.csv',index=False,encoding='utf-8')
+        return '',[],0,0 # [{}] length=1
+
+
+    #pd.to_pickle(all_cid_source,'../allcid_filtered')
+
+
+
+
+    ### cid ->datadict
+    #all_cid_source=pd.read_pickle('../allcid_filtered')
+    #cid_produce=select_produce(all_cid_source,attList_clueDB)
+
+    #pd.to_pickle(cid_produce,'../data/cid_produce')
+    #pd.DataFrame({'produce':cid_produce.values()}).to_csv('../produce.csv',index=False)
+
+
+
+
+
+    ########## directly go to csv,no knn
+    #### cidlist->format the csv
+    #cidlist=pd.read_pickle('../result_cid')
+
+    attList_clueDB=['Clue_Entry_Name','Clue_Entry_Com_Name','Clue_Entry_Cellphone','Clue_Entry_Qq','Clue_Entry_Wechat','Clue_Entry_Email',\
+           'Com_Address','Clue_Entry_Major','Clue_Entry_Birthday','Clue_Entry_Telephone','qiantai','chuanzhen','main_produce',\
+           'com_type','main_industry','registrationdate','com_info','businessScope','registed_capital']
+    #all_cid_source=pd.read_pickle('../allcid_filtered')
+    dataDict={}
+    for att in attList_clueDB:
+        dataDict[att]=[]
+    for cid in all_cid_source:
+
+        source=all_cid_source[cid]
+        # if 'Clue_Entry_Cellphone' not in source or len(str(source['Clue_Entry_Cellphone']))!=11:continue
+        # if 'Clue_Entry_Name' not in source or str(source['Clue_Entry_Name']) in ['--','']:continue
+        for att in attList_clueDB:
+            if att in source:
+                #print source[att]   None
+                add='' if source[att] in [None] else source[att]
+                dataDict[att].append(add)
+            else:dataDict[att].append('')
+    ####
+
+
+
+    ##### for visual
+
+    visual_num=10 if ttfd_remove_repeat>10 else ttfd_remove_repeat
+
+    dictList=[]
+    for i in range(visual_num):
+        dic={}
+
+        dic['diqu']=dataDict['Com_Address'][i]
+        dic['product']=dataDict['main_produce'][i]
+        dic['comname']=dataDict['Clue_Entry_Com_Name'][i]
+        dic['position']=dataDict['Clue_Entry_Major'][i]
+        dic['businessScope']=dataDict['businessScope'][i]
+        # for att in ['Clue_Entry_Com_Name','main_produce','businessScope','com_info','Clue_Entry_Major','Com_Address']:
+        #     dic[att]=dataDict[att][i]
+        dic['timestamp']=int(time.time())
+        dictList.append(dic)
+
+
+
+
+    klist=['Clue_Entry_Name','Clue_Entry_Com_Name','Clue_Entry_Cellphone','Clue_Entry_Qq','Clue_Entry_Wechat','Clue_Entry_Email',\
+           'Com_Address','Clue_Entry_Major','Clue_Entry_Birthday','Clue_Entry_Telephone','qiantai','chuanzhen','main_produce',\
+           'com_type','main_industry',\
+           'shouji2','registrationdate','registed_capital','businessScope','com_info','beiyong5','beizhu','gender']
+
+    vlist=['姓名（必填）','公司名称（必填）','电话（必填）','QQ', '微信','Email', '公司地址','职位','生日','座机','前台电话','传真','主营产品',\
+           '公司类型','行业',\
+           '手机2','备用1','备用2','备用3','备用4','备用5','备注','性别']
+
+
+    vlist_model=['姓名（必填）','电话（必填）','公司名称（必填）','职位','行业','公司地址','公司类型','主营产品','微信','Email','QQ',\
+                 '手机2','备用1','备用2','备用3','备用4','备用5','备注','性别',\
+                 '生日','前台电话','座机','传真']
+
+    df=pd.DataFrame(dataDict)
+    #choose columns first
+    df=pd.DataFrame(df,columns=klist);print df.columns
+
+    namedict=dict(zip(klist,vlist))
+    df1=df.rename(columns=namedict)
+    # adjust attribute in sequence
+    df1=pd.DataFrame(df1,columns=vlist_model)
+    ### save to local
+    df1=df1[:num_total]
+    df1.to_csv('tmp.csv',index=False,encoding='utf-8')
+    return df1,dictList,ttfd_remove_repeat,ttfd+ttfd1
+
+
+
+if __name__=='__main__':
+
+
+
+
+
+
+
+    query_clueDB('clue_filtered','北京','','','','',100)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

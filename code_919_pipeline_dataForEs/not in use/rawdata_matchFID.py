@@ -1,0 +1,247 @@
+#! -*- coding:utf-8 -*-
+
+import MySQLdb
+import os
+import random,cPickle
+import csv
+import pandas as pd
+
+from MySQLdb import cursors
+import numpy as np
+#from clue import *
+
+#from base import CategoricalTextMixIn, ClueFeature, FieldExistsMixIn, ParseNumberMixIn,get_clues
+#import pylab as plt
+import sys,time
+reload(sys)
+sys.setdefaultencoding('utf8')
+
+db = MySQLdb.connect(host='rds5943721vp4so4j16ro.mysql.rds.aliyuncs.com',
+                     user='yunker',
+                     passwd="yunker2016EP",
+                     db="xddb",
+                     use_unicode=True,
+                     charset='utf8',
+                     cursorclass=cursors.DictCursor)
+
+def get_all_idx():
+    '''
+    Get all the Clue_Id
+    '''
+    sql = "SELECT clue_id from crm_t_clue limit 10000"
+    df=pd.read_sql(sql,db)
+    df.to_csv("../allClueId.csv",index=False,encoding='utf-8')
+
+def get_negative_idx(clueId): #too slow
+    print '1', clueId[0],len(clueId)
+    '''
+    Get negative   Clue_Id
+    '''
+    sql = """SELECT clue_id from crm_t_clue
+            where clue_id not in ('%s')
+            limit 10"""
+
+    df=pd.read_sql(sql % "','".join(clueId),db)
+    #df=pd.read_sql(sql,db)
+    df.to_csv("../negativeClueId.csv",index=False,encoding='utf-8')
+
+
+
+def get_positive_id():
+    '''
+    Get the positive_ids from phone_response_clue.txt ->phone ,id,
+    '''
+
+    positive_responses = set(['QQ', '短信', '注册', '邮箱', '预约' ,'微信'])
+    with open('../tianxiang/phone_response_clue.txt') as f:
+        lines = f.read().split('\n')[:-1]
+    oids = [l.split(',')[2] for l in lines if l.split(',')[1] in positive_responses]#id
+    teles = [l.split(',')[0] for l in lines if l.split(',')[1] in positive_responses]#tele
+
+    pd.DataFrame({'clueId':oids,'teles':teles}).to_csv("../clueId_tele.csv",index=False,encoding='utf-8')
+    return oids,teles
+
+
+
+def get_clue_idx(tels):
+    '''
+    Get Clue_Ids by Clue_Entry_Cellphone
+    '''
+
+    sql = """
+        SELECT CLue_Id
+        FROM crm_t_clue
+        WHERE Clue_Entry_Cellphone IN
+              ('%s')
+    """
+    df=pd.read_sql(sql % "','".join(tels),db)
+    df.to_csv("../teleQueryClueId.csv",index=False,encoding='utf-8')
+
+
+
+def get_clues(clue_ids):
+
+    start_time=time.time()
+    sql = """
+        SELECT *
+        FROM crm_t_clue
+        WHERE CLue_Id IN
+              ('%s')
+    """
+    cur = db.cursor()
+    cur.execute(sql % "','".join(clue_ids))
+    ret = {}
+    for r in cur.fetchall():
+        #del r['Creat_Time']
+        ret[r['CLue_Id']] = r #{id:{record},...}
+
+    #CLUE_CACHE.clear()
+    #print 'after clear cache',len(CLUE_CACHE)
+    return ret
+
+
+
+
+
+
+if __name__ == "__main__":
+    time_start=time.time()
+
+
+     
+    #############
+    #cache by batch raw data,no feastr
+    #### given clueId->{clueid:{feaStr:v,,,,}
+    df=pd.read_csv("../data/allClueId_.csv",encoding='utf-8')
+
+    all_clueId=np.unique(np.squeeze(df.values));print 'all clueid',all_clueId.shape
+
+    ########## query calc fea  ->{clueid:{feaStr:feavalue...}
+     
+
+    ## ### batches of cache
+    numall=all_clueId.shape[0]
+    num_batches=numall/100000+2
+    batch=0
+
+
+    for i in range(num_batches)[:]: # 0 1 2 3
+        batch=i
+
+        print 'batch',i
+        model_clueid=all_clueId.tolist()[i*100000:(i+1)*100000]
+        #model_clueid=model_clueid[:2]
+        ret=get_clues(model_clueid[:]) # into cache
+        print len(ret)
+        pd.to_pickle(ret,'../cache_batches/rst_%s'% str(ret.keys()[0]))
+
+
+    ### last batch
+    #features = ClueFeature.__subclasses__()
+
+    #model_clueid=all_clueId.tolist()[2600000:];print model_clueid.__len__()
+    #get_clues(model_clueid[:]) # into cache
+
+
+    time_end=time.time()
+    print 'time... %f sec'%(time_end-time_start)
+
+
+
+    ############ load dict
+    #idFeaDict=pd.read_pickle('../clueTable_dict/id_feaDict_strDict_clue_0')
+    #print idFeaDict
+    """
+
+
+    ############3
+    # each cache preprocess
+    fpath='../cache_batches/'
+    outpath='../raw_batches/'
+
+    ## make same len of cid_fid_dict and allclueid
+    all_clueId_list=all_clueId.tolist()
+    rowdictList=[{}]*len(all_clueId_list)
+    cid_emptyRow_dict=dict(zip(all_clueId_list,rowdictList))
+    ## cid_fid dict
+    fid_dict=pd.read_pickle('../data/all_cid_fid_dict');print 'fid', len(fid_dict)
+    cid_emptyRow_dict.update(fid_dict)
+    #pd.to_pickle(cid_emptyRow_dict,'../all_cid_fid_dict_includeEmpty')
+
+
+
+    batch=0
+    for filename in os.listdir(fpath)[:1]:
+        print batch;batch+=1
+
+        ## each batch
+        cachei=pd.read_pickle(fpath+filename);print 'cachei',len(cachei)
+        batch_cid_raw_fid_dic=cachei.copy()
+        num=0
+        for cid,rowdict in cachei.items()[:1]:
+            print 'k',cid
+            for it in ['Create_Time','Edit_Time','weixin_CreateTime','vip_end_date']:
+                cachei[cid][it]=time.time()
+
+
+
+            rowdict['feature_value']=str({})
+            #if cid in fid_dict.keys():
+            rowdict['feature_value']=str(fid_dict[cid])
+            if rowdict['param2']=='':
+                rowdict['param2']=-1000
+            if rowdict['param3']=='':
+                rowdict['param3']=-1000
+            rowdict['param2']=int(rowdict['param2']);
+            rowdict['param3']=int(rowdict['param3']);
+
+           ###
+            rowdict['location']=str(rowdict["Clue_Latitude"])+','+rowdict["Clue_Longitude"]
+
+            #####
+            batch_cid_raw_fid_dic[cid]=rowdict
+            #if num%10000==0:print num
+            #print rowdict
+        ####
+        pd.to_pickle(batch_cid_raw_fid_dic,outpath+'raw_fid_%s'%str(batch))
+
+
+
+
+    endt=time.time()
+    print 'time',endt-time_start
+    """
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

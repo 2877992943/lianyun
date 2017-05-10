@@ -1,0 +1,6 @@
+<form id="addform" action="do.php?action=import" method="post" enctype="multipart/form-data"> 
+    <p>请选择要导入的CSV文件：<br/><input type="file" name="file"> <input type="submit" 
+    class="btn" value="导入CSV"> 
+    <input type="button" class="btn" value="导出CSV" onclick="window.location.href='do.php? 
+    action=export'"></p> 
+</form> 

@@ -1,0 +1,57 @@
+#! -*- coding:utf-8 -*-
+
+
+import os.path
+
+import tornado.httpserver
+import tornado.ioloop
+import tornado.options
+import tornado.web
+from es_search_clue import output_csv
+
+from tornado.options import define, options
+define("port", default=8000, help="run on the given port", type=int)
+
+class IndexHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.render('index.html')
+
+class PoemPageHandler(tornado.web.RequestHandler):
+    def post(self):
+        diqu = self.get_argument('diqu')
+        comname = self.get_argument('comname')
+        product = self.get_argument('product')
+        position = self.get_argument('position')
+        self.render('poem.html', diqu =diqu, comname=comname, product=product,
+                position=position)
+
+class RecommendedHandler(tornado.web.RequestHandler):
+    def post(self):
+	diqu = self.get_argument('diqu')
+        comname = self.get_argument('comname')
+        product = self.get_argument('product')
+        position = self.get_argument('position')
+        df1,dictList=output_csv(comname,diqu,product,position)
+        self.render(
+            "recommended.html",
+            page_title="Burt's Books | Recommended Reading",
+            header_text="Recommended Reading",
+            books=dictList
+        )
+class BookModule(tornado.web.UIModule):
+    def render(self, book):
+        return self.render_string('modules/book.html', book=book)
+
+
+if __name__ == '__main__':
+    tornado.options.parse_command_line()
+    app = tornado.web.Application(
+        #handlers=[(r'/', IndexHandler), (r'/poem', PoemPageHandler)],
+        handlers=[(r'/', IndexHandler), (r'/poem', RecommendedHandler)],
+        template_path=os.path.join(os.path.dirname(__file__), "templates"),
+        static_path=os.path.join(os.path.dirname(__file__), 'static'),
+        ui_modules={'Book': BookModule}
+    )
+    http_server = tornado.httpserver.HTTPServer(app)
+    http_server.listen(options.port)
+    tornado.ioloop.IOLoop.instance().start()

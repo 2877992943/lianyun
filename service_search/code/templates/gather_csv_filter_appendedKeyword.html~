@@ -1,0 +1,126 @@
+<html>
+                    <head><br>                      <title>Upload File</title><br>                    </head>
+
+		    <meta charset="utf-8" />
+
+                    <body>
+                      <form action='file' enctype="multipart/form-data" method='post'>
+                        上传文件包含comname|businessScope|cominfo字段:<input type='file' name='file_3fields'/>
+                        <input type='submit' value='submit'/>
+                      </form>
+                    </body>
+		   
+
+		    <form method="post" action="/recom">
+			    <div class="row">
+				<div class="name">
+					公司名称必须包括关键词
+				</div>
+				<div class="enter">
+					<input type="text" placeholder="1个词，暂不支持多个词" name="comname_oneword">
+				</div>
+			    </div>
+
+			    <div class="row">
+				<div class="name">
+					公司名称必须排除关键词
+				</div>
+				<div class="enter">
+					<input type="text" placeholder="可以填多个词以空格分割" name="comname_mustnot">
+				</div>
+			    </div>
+
+			    <div class="row">
+				<div class="name">
+					省
+				</div>
+				<div class="enter">
+					<input type="text" placeholder="1个词，暂不支持多个词" name="provice">
+				</div>
+			    </div>
+
+			    <div class="row">
+				<div class="name">
+					市
+				</div>
+				<div class="enter">
+					<input type="text" placeholder="1个词，暂不支持多个词" name="city">
+				</div>
+			    </div>
+
+			    <div class="row">
+				<div class="name">
+					职位
+				</div>
+				<div class="enter">
+					<input type="text" placeholder="1个词，暂不支持多个词" name="position">
+				</div>
+			    </div>
+
+			    <div class="row">
+				<div class="name">
+					人数大于
+				</div>
+				<div class="enter">
+					<input type="text" placeholder="填写数字" name="employeeNum">
+				</div>
+			    </div>
+
+			    <div class="row">
+				<div class="name">
+					左上右下角经纬度坐标
+				</div>
+				<div class="enter">
+					<input type="text" placeholder="例如39.86 116.37 39.83 116.41" name="geo">
+				</div>
+			    </div>
+
+			    <div class="row">
+				<div class="name">
+					注册年份
+				</div>
+				<div class="enter">
+					<input type="text" placeholder="例如2015" name="registrationYear">
+				</div>
+			    </div>
+
+			    <div class="row">
+				<div class="name">
+					追加公司名关键词
+				</div>
+				<div class="enter">
+					<input type="text" placeholder="可以填多个词以空格分割" name="comname_list">
+				</div>
+			    </div>
+
+			    <div class="row">
+				<div class="name">
+					追加经营范围关键词
+				</div>
+				<div class="enter">
+					<input type="text" placeholder="可以填多个词以空格分割" name="businessScope_list">
+				</div>
+			    </div>
+
+
+
+
+			    <div class="row">
+				<div class="submit">
+					<input type="submit" value="提交" />
+				</div>
+			    </div>
+
+		     
+
+
+
+
+
+
+
+
+		 
+		    </form>
+
+                  </html>

@@ -1,0 +1,24 @@
+<meta charset="utf-8" />
+
+<form method="post" target="_blank" action="/download_clean">
+	<div class="row">
+		<div class="submit">
+			<input type="submit" value="download clean" />
+		</div>
+	</div>
+</form>
+
+<form method="post" target="_blank" action="/download_unclean">
+	<div class="row">
+		<div class="submit">
+			<input type="submit" value="download unclean" />
+		</div>
+	</div>
+</form>
+
+
+<div class="sub-title">
+	{{header_text}}
+</div>
+
+ 

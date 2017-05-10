@@ -1,0 +1,6 @@
+use cominfo word2vec ->parse clean  -> train word2vec -> synonym ->sql
+tfidf keyword -> es
+
+word_idf
+word_ind
+word2vecModel
